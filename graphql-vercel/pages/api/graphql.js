@@ -2,24 +2,24 @@ import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
 
+// Koneksi ke Database Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
+// Definisikan Schema GraphQL (4 Tabel Berelasi)
 const typeDefs = `#graphql
   type User {
     id: ID!
     name: String!
     email: String!
-    products: [Product!]!
-    orders: [Order!]!
   }
 
   type Category {
     id: ID!
     name: String!
-    products: [Product!]!
+    products: [Product]
   }
 
   type Product {
@@ -27,57 +27,73 @@ const typeDefs = `#graphql
     name: String!
     price: Float!
     stock: Int!
-    category: Category!
-    owner: User!
+    owner: User
   }
 
   type Order {
     id: ID!
     quantity: Int!
     total_price: Float!
-    user: User!
-    product: Product!
+    user: User
+    product: Product
   }
 
   type Query {
-    users: [User!]!
-    user(id: ID!): User
-    categories: [Category!]!
-    category(id: ID!): Category
-    products: [Product!]!
-    product(id: ID!): Product
-    orders: [Order!]!
+    users: [User]
+    categories: [Category]
+    products: [Product]
+    orders: [Order]
   }
 `;
 
+// Definisikan Resolvers untuk Menarik Data dari PostgreSQL (Neon)
 const resolvers = {
   Query: {
-    users: async () => (await pool.query('SELECT * FROM users')).rows,
-    user: async (_, { id }) => (await pool.query('SELECT * FROM users WHERE id = $1', [id])).rows[0],
-    categories: async () => (await pool.query('SELECT * FROM categories')).rows,
-    category: async (_, { id }) => (await pool.query('SELECT * FROM categories WHERE id = $1', [id])).rows[0],
-    products: async () => (await pool.query('SELECT * FROM products')).rows,
-    product: async (_, { id }) => (await pool.query('SELECT * FROM products WHERE id = $1', [id])).rows[0],
-    orders: async () => (await pool.query('SELECT * FROM orders')).rows
-  },
-  User: {
-    products: async (parent) => (await pool.query('SELECT * FROM products WHERE owner_id = $1', [parent.id])).rows,
-    orders: async (parent) => (await pool.query('SELECT * FROM orders WHERE user_id = $1', [parent.id])).rows
+    users: async () => {
+      const result = await pool.query('SELECT * FROM users');
+      return result.rows;
+    },
+    categories: async () => {
+      const result = await pool.query('SELECT * FROM categories');
+      return result.rows;
+    },
+    products: async () => {
+      const result = await pool.query('SELECT * FROM products');
+      return result.rows;
+    },
+    orders: async () => {
+      const result = await pool.query('SELECT * FROM orders');
+      return result.rows;
+    },
   },
   Category: {
-    products: async (parent) => (await pool.query('SELECT * FROM products WHERE category_id = $1', [parent.id])).rows
+    products: async (parent) => {
+      const result = await pool.query('SELECT * FROM products WHERE category_id = $1', [parent.id]);
+      return result.rows;
+    }
   },
   Product: {
-    category: async (parent) => (await pool.query('SELECT * FROM categories WHERE id = $1', [parent.category_id])).rows[0],
-    owner: async (parent) => (await pool.query('SELECT * FROM users WHERE id = $1', [parent.owner_id])).rows[0]
+    owner: async (parent) => {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [parent.owner_id]);
+      return result.rows[0];
+    }
   },
   Order: {
-    user: async (parent) => (await pool.query('SELECT * FROM users WHERE id = $1', [parent.user_id])).rows[0],
-    product: async (parent) => (await pool.query('SELECT * FROM products WHERE id = $1', [parent.product_id])).rows[0]
+    user: async (parent) => {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [parent.user_id]);
+      return result.rows[0];
+    },
+    product: async (parent) => {
+      const result = await pool.query('SELECT * FROM products WHERE id = $1', [parent.product_id]);
+      return result.rows[0];
+    }
   }
 };
 
-const server = new ApolloServer({ typeDefs, resolvers });
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+});
 
 export default startServerAndCreateNextHandler(server, {
   context: async (req, res) => ({ req, res }),
