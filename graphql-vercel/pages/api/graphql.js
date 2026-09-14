@@ -57,23 +57,26 @@ const resolvers = {
       const result = await pool.query('SELECT * FROM users');
       return result.rows;
     },
-
+  
     categories: async () => {
       const result = await pool.query('SELECT * FROM categories');
       return result.rows;
     },
-
+  
     products: async () => {
       const result = await pool.query('SELECT * FROM products');
       return result.rows;
     },
-
+  
     orders: async () => {
       const result = await pool.query('SELECT * FROM orders');
       return result.rows;
     },
-
-    resolverCallCount: () => resolverCallCount,
+  
+    resolverCallCount: async () => {
+      const result = await pool.query('SELECT COUNT(*) FROM categories');
+      return Number(result.rows[0].count);
+    },
   },
 
   Category: {
