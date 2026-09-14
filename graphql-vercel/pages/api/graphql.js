@@ -80,6 +80,10 @@ const resolvers = {
     products: async (parent) => {
       resolverCallCount++;
 
+      console.log(
+        `Category.products dipanggil untuk category_id=${parent.id}. Total pemanggilan: ${resolverCallCount}`
+      );
+
       const result = await pool.query(
         'SELECT * FROM products WHERE category_id = $1',
         [parent.id]
