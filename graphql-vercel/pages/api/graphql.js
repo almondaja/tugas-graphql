@@ -1,3 +1,4 @@
+```javascript
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
@@ -8,7 +9,13 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Definisikan Schema GraphQL (4 Tabel Berelasi)
+// ==========================================
+// COUNTER UNTUK MENGHITUNG PEMANGGILAN
+// RESOLVER Category.products
+// ==========================================
+let resolverCallCount = 0;
+
+// Definisikan Schema GraphQL
 const typeDefs = `#graphql
   type User {
     id: ID!
@@ -43,48 +50,80 @@ const typeDefs = `#graphql
     categories: [Category]
     products: [Product]
     orders: [Order]
+
+    # Field tambahan sementara untuk melihat jumlah resolver
+    resolverCallCount: Int!
   }
 `;
 
-// Definisikan Resolvers untuk Menarik Data dari PostgreSQL (Neon)
+// Definisikan Resolvers
 const resolvers = {
   Query: {
     users: async () => {
       const result = await pool.query('SELECT * FROM users');
       return result.rows;
     },
+
     categories: async () => {
       const result = await pool.query('SELECT * FROM categories');
       return result.rows;
     },
+
     products: async () => {
       const result = await pool.query('SELECT * FROM products');
       return result.rows;
     },
+
     orders: async () => {
       const result = await pool.query('SELECT * FROM orders');
       return result.rows;
     },
+
+    // Mengembalikan jumlah pemanggilan resolver Category.products
+    resolverCallCount: () => resolverCallCount,
   },
+
   Category: {
     products: async (parent) => {
-      const result = await pool.query('SELECT * FROM products WHERE category_id = $1', [parent.id]);
+      // Tambahkan counter setiap kali resolver dipanggil
+      resolverCallCount++;
+
+      const result = await pool.query(
+        'SELECT * FROM products WHERE category_id = $1',
+        [parent.id]
+      );
+
       return result.rows;
     }
   },
+
   Product: {
     owner: async (parent) => {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [parent.owner_id]);
+      const result = await pool.query(
+        'SELECT * FROM users WHERE id = $1',
+        [parent.owner_id]
+      );
+
       return result.rows[0];
     }
   },
+
   Order: {
     user: async (parent) => {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [parent.user_id]);
+      const result = await pool.query(
+        'SELECT * FROM users WHERE id = $1',
+        [parent.user_id]
+      );
+
       return result.rows[0];
     },
+
     product: async (parent) => {
-      const result = await pool.query('SELECT * FROM products WHERE id = $1', [parent.product_id]);
+      const result = await pool.query(
+        'SELECT * FROM products WHERE id = $1',
+        [parent.product_id]
+      );
+
       return result.rows[0];
     }
   }
@@ -98,3 +137,4 @@ const server = new ApolloServer({
 export default startServerAndCreateNextHandler(server, {
   context: async (req, res) => ({ req, res }),
 });
+```
