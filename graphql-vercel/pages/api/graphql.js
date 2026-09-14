@@ -1,4 +1,3 @@
-```javascript
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
@@ -9,13 +8,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// ==========================================
-// COUNTER UNTUK MENGHITUNG PEMANGGILAN
-// RESOLVER Category.products
-// ==========================================
+// Counter untuk menghitung pemanggilan resolver Category.products
 let resolverCallCount = 0;
 
-// Definisikan Schema GraphQL
+// Schema GraphQL
 const typeDefs = `#graphql
   type User {
     id: ID!
@@ -50,13 +46,11 @@ const typeDefs = `#graphql
     categories: [Category]
     products: [Product]
     orders: [Order]
-
-    # Field tambahan sementara untuk melihat jumlah resolver
     resolverCallCount: Int!
   }
 `;
 
-// Definisikan Resolvers
+// Resolvers
 const resolvers = {
   Query: {
     users: async () => {
@@ -79,13 +73,11 @@ const resolvers = {
       return result.rows;
     },
 
-    // Mengembalikan jumlah pemanggilan resolver Category.products
     resolverCallCount: () => resolverCallCount,
   },
 
   Category: {
     products: async (parent) => {
-      // Tambahkan counter setiap kali resolver dipanggil
       resolverCallCount++;
 
       const result = await pool.query(
@@ -134,7 +126,21 @@ const server = new ApolloServer({
   resolvers,
 });
 
-export default startServerAndCreateNextHandler(server, {
-  context: async (req, res) => ({ req, res }),
-});
-```
+const handler = startServerAndCreateNextHandler(server);
+
+export default async function graphqlHandler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'https://studio.apollographql.com');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Apollo-Require-Preflight'
+  );
+
+  // Handle Apollo Studio preflight request
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  return handler(req, res);
+}
