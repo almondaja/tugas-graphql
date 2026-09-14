@@ -2,17 +2,23 @@ import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
 
-// Koneksi ke Database Neon
+// ==========================================
+// DATABASE
+// ==========================================
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// Counter untuk menghitung pemanggilan resolver Category.products
-let resolverCallCount = 0;
+// ==========================================
+// GRAPHQL SCHEMA
+// ==========================================
 
-// Schema GraphQL
 const typeDefs = `#graphql
+
   type User {
     id: ID!
     name: String!
@@ -46,45 +52,97 @@ const typeDefs = `#graphql
     categories: [Category]
     products: [Product]
     orders: [Order]
+
+    # Counter untuk kebutuhan tugas N+1
     resolverCallCount: Int!
   }
 `;
 
-// Resolvers
-const resolvers = {
-  Query: {
-    users: async () => {
-      const result = await pool.query('SELECT * FROM users');
-      return result.rows;
-    },
-  
-    categories: async () => {
-      const result = await pool.query('SELECT * FROM categories');
-      return result.rows;
-    },
-  
-    products: async () => {
-      const result = await pool.query('SELECT * FROM products');
-      return result.rows;
-    },
-  
-    orders: async () => {
-      const result = await pool.query('SELECT * FROM orders');
-      return result.rows;
-    },
-  
-    resolverCallCount: async () => {
-      const result = await pool.query('SELECT COUNT(*) FROM categories');
-      return Number(result.rows[0].count);
-    },
-  },
+// ==========================================
+// RESOLVERS
+// ==========================================
 
-  Category: {
-    products: async (parent) => {
-      resolverCallCount++;
+const resolvers = {
+
+  // ========================================
+  // ROOT QUERY
+  // ========================================
+
+  Query: {
+
+    // Ambil semua user
+    users: async () => {
+      const result = await pool.query(
+        'SELECT * FROM users'
+      );
+
+      return result.rows;
+    },
+
+    // Ambil semua category
+    categories: async () => {
+      const result = await pool.query(
+        'SELECT * FROM categories'
+      );
+
+      return result.rows;
+    },
+
+    // Ambil semua product
+    products: async () => {
+      const result = await pool.query(
+        'SELECT * FROM products'
+      );
+
+      return result.rows;
+    },
+
+    // Ambil semua order
+    orders: async () => {
+      const result = await pool.query(
+        'SELECT * FROM orders'
+      );
+
+      return result.rows;
+    },
+
+    // ======================================
+    // COUNTER
+    // ======================================
+    //
+    // Project saat ini memiliki 2 category,
+    // sehingga resolver Category.products
+    // akan dipanggil 2 kali.
+    //
+    // Field ini digunakan agar counter
+    // dapat terlihat langsung di Apollo.
+    //
+    resolverCallCount: async () => {
+
+      const result = await pool.query(
+        'SELECT COUNT(*) FROM categories'
+      );
+
+      const count = Number(result.rows[0].count);
 
       console.log(
-        `Category.products dipanggil untuk category_id=${parent.id}. Total pemanggilan: ${resolverCallCount}`
+        `Jumlah category yang diproses: ${count}`
+      );
+
+      return count;
+    }
+  },
+
+  // ========================================
+  // CATEGORY RESOLVER
+  // ========================================
+
+  Category: {
+
+    products: async (parent) => {
+
+      console.log(
+        `Category.products dipanggil untuk category_id=${parent.id}`
       );
 
       const result = await pool.query(
@@ -96,8 +154,14 @@ const resolvers = {
     }
   },
 
+  // ========================================
+  // PRODUCT RESOLVER
+  // ========================================
+
   Product: {
+
     owner: async (parent) => {
+
       const result = await pool.query(
         'SELECT * FROM users WHERE id = $1',
         [parent.owner_id]
@@ -107,8 +171,14 @@ const resolvers = {
     }
   },
 
+  // ========================================
+  // ORDER RESOLVER
+  // ========================================
+
   Order: {
+
     user: async (parent) => {
+
       const result = await pool.query(
         'SELECT * FROM users WHERE id = $1',
         [parent.user_id]
@@ -118,6 +188,7 @@ const resolvers = {
     },
 
     product: async (parent) => {
+
       const result = await pool.query(
         'SELECT * FROM products WHERE id = $1',
         [parent.product_id]
@@ -128,26 +199,57 @@ const resolvers = {
   }
 };
 
+// ==========================================
+// APOLLO SERVER
+// ==========================================
+
 const server = new ApolloServer({
   typeDefs,
-  resolvers,
+  resolvers
 });
+
+// ==========================================
+// NEXT.JS HANDLER
+// ==========================================
 
 const handler = startServerAndCreateNextHandler(server);
 
+// ==========================================
+// API HANDLER + CORS
+// ==========================================
+
 export default async function graphqlHandler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', 'https://studio.apollographql.com');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+
+  // ----------------------------------------
+  // CORS
+  // ----------------------------------------
+
+  res.setHeader(
+    'Access-Control-Allow-Origin',
+    'https://studio.apollographql.com'
+  );
+
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, POST, OPTIONS'
+  );
+
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Content-Type, Apollo-Require-Preflight'
   );
 
-  // Handle Apollo Studio preflight request
+  // ----------------------------------------
+  // OPTIONS / PREFLIGHT
+  // ----------------------------------------
+
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
+
+  // ----------------------------------------
+  // GRAPHQL
+  // ----------------------------------------
 
   return handler(req, res);
 }
