@@ -1,3 +1,4 @@
+```javascript
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
@@ -47,14 +48,45 @@ const typeDefs = `#graphql
     product: Product
   }
 
+  # ========================================
+  # INPUT TYPE
+  # ========================================
+
+  input CreateProductInput {
+    name: String!
+    price: Float!
+    stock: Int!
+    categoryId: ID!
+    ownerId: ID!
+  }
+
+  input UpdateProductInput {
+    name: String
+    price: Float
+    stock: Int
+  }
+
+  # ========================================
+  # QUERY
+  # ========================================
+
   type Query {
     users: [User]
     categories: [Category]
-    products: [Product]
+    products(categoryId: ID): [Product]
     orders: [Order]
 
-    # Counter untuk kebutuhan tugas N+1
     resolverCallCount: Int!
+  }
+
+  # ========================================
+  # MUTATION
+  # ========================================
+
+  type Mutation {
+    createProduct(input: CreateProductInput!): Product!
+    updateProduct(id: ID!, input: UpdateProductInput!): Product!
+    deleteProduct(id: ID!): Boolean!
   }
 `;
 
@@ -89,7 +121,17 @@ const resolvers = {
     },
 
     // Ambil semua product
-    products: async () => {
+    products: async (_, { categoryId }) => {
+
+      if (categoryId) {
+        const result = await pool.query(
+          'SELECT * FROM products WHERE category_id = $1',
+          [categoryId]
+        );
+
+        return result.rows;
+      }
+
       const result = await pool.query(
         'SELECT * FROM products'
       );
@@ -109,14 +151,7 @@ const resolvers = {
     // ======================================
     // COUNTER
     // ======================================
-    //
-    // Project saat ini memiliki 2 category,
-    // sehingga resolver Category.products
-    // akan dipanggil 2 kali.
-    //
-    // Field ini digunakan agar counter
-    // dapat terlihat langsung di Apollo.
-    //
+
     resolverCallCount: async () => {
 
       const result = await pool.query(
@@ -196,6 +231,75 @@ const resolvers = {
 
       return result.rows[0];
     }
+  },
+
+  // ========================================
+  // MUTATION
+  // ========================================
+
+  Mutation: {
+
+    // ======================================
+    // CREATE PRODUCT
+    // ======================================
+
+    createProduct: async (_, { input }) => {
+
+      const result = await pool.query(
+        `INSERT INTO products
+        (name, price, stock, category_id, owner_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *`,
+        [
+          input.name,
+          input.price,
+          input.stock,
+          input.categoryId,
+          input.ownerId
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    // ======================================
+    // UPDATE PRODUCT
+    // ======================================
+
+    updateProduct: async (_, { id, input }) => {
+
+      const result = await pool.query(
+        `UPDATE products
+        SET
+          name = COALESCE($1, name),
+          price = COALESCE($2, price),
+          stock = COALESCE($3, stock)
+        WHERE id = $4
+        RETURNING *`,
+        [
+          input.name,
+          input.price,
+          input.stock,
+          id
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    // ======================================
+    // DELETE PRODUCT
+    // ======================================
+
+    deleteProduct: async (_, { id }) => {
+
+      const result = await pool.query(
+        'DELETE FROM products WHERE id = $1',
+        [id]
+      );
+
+      return result.rowCount > 0;
+    }
   }
 };
 
@@ -253,3 +357,4 @@ export default async function graphqlHandler(req, res) {
 
   return handler(req, res);
 }
+```
