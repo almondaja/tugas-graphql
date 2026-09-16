@@ -2,257 +2,409 @@ import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
 
+// ==========================================
+// DATABASE
+// ==========================================
+
 const pool = new Pool({
-connectionString: process.env.DATABASE_URL,
-ssl: {
-rejectUnauthorized: false
-}
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
+
+// ==========================================
+// GRAPHQL SCHEMA
+// ==========================================
 
 const typeDefs = `#graphql
 
-type User {
-id: ID!
-name: String!
-email: String!
-}
-
-type Category {
-id: ID!
-name: String!
-products: [Product]
-}
-
-type Product {
-id: ID!
-name: String!
-price: Float!
-stock: Int!
-owner: User
-}
-
-type Order {
-id: ID!
-quantity: Int!
-total_price: Float!
-user: User
-product: Product
-}
-
-input CreateProductInput {
-name: String!
-price: Float!
-stock: Int!
-categoryId: ID!
-ownerId: ID!
-}
-
-input UpdateProductInput {
-name: String
-price: Float
-stock: Int
-}
-
-type Query {
-users: [User]
-categories: [Category]
-products(categoryId: ID): [Product]
-orders: [Order]
-resolverCallCount: Int!
-}
-
-type Mutation {
-createProduct(input: CreateProductInput!): Product!
-updateProduct(id: ID!, input: UpdateProductInput!): Product!
-deleteProduct(id: ID!): Boolean!
-}
-`;
-
-const resolvers = {
-Query: {
-users: async () => {
-const result = await pool.query(
-'SELECT * FROM users'
-);
-
-```
-  return result.rows;
-},
-
-categories: async () => {
-  const result = await pool.query(
-    'SELECT * FROM categories'
-  );
-
-  return result.rows;
-},
-
-products: async (_, { categoryId }) => {
-  if (categoryId) {
-    const result = await pool.query(
-      'SELECT * FROM products WHERE category_id = $1',
-      [categoryId]
-    );
-
-    return result.rows;
+  type User {
+    id: ID!
+    name: String!
+    email: String!
   }
 
-  const result = await pool.query(
-    'SELECT * FROM products'
-  );
+  type Category {
+    id: ID!
+    name: String!
+    products: [Product]
+  }
 
-  return result.rows;
-},
+  type Product {
+    id: ID!
+    name: String!
+    price: Float!
+    stock: Int!
+    owner: User
+  }
 
-orders: async () => {
-  const result = await pool.query(
-    'SELECT * FROM orders'
-  );
+  type Order {
+    id: ID!
+    quantity: Int!
+    total_price: Float!
+    user: User
+    product: Product
+  }
 
-  return result.rows;
-},
+  # ========================================
+  # INPUT TYPES
+  # ========================================
 
-resolverCallCount: async () => {
-  const result = await pool.query(
-    'SELECT COUNT(*) FROM categories'
-  );
+  input CreateProductInput {
+    name: String!
+    price: Float!
+    stock: Int!
+    categoryId: ID!
+    ownerId: ID
+  }
 
-  return Number(result.rows[0].count);
-}
-```
+  input UpdateProductInput {
+    name: String
+    price: Float
+    stock: Int
+  }
 
-},
+  # ========================================
+  # QUERY
+  # ========================================
 
-Category: {
-products: async (parent) => {
-const result = await pool.query(
-'SELECT * FROM products WHERE category_id = $1',
-[parent.id]
-);
+  type Query {
+    users: [User]
+    categories: [Category]
+    products(categoryId: ID): [Product]
+    orders: [Order]
 
-```
-  return result.rows;
-}
-```
+    resolverCallCount: Int!
+  }
 
-},
+  # ========================================
+  # MUTATION
+  # ========================================
 
-Product: {
-owner: async (parent) => {
-const result = await pool.query(
-'SELECT * FROM users WHERE id = $1',
-[parent.owner_id]
-);
+  type Mutation {
+    createProduct(input: CreateProductInput!): Product!
+    updateProduct(id: ID!, input: UpdateProductInput!): Product!
+    deleteProduct(id: ID!): Boolean!
+  }
+`;
 
-```
-  return result.rows[0];
-}
-```
+// ==========================================
+// RESOLVERS
+// ==========================================
 
-},
+const resolvers = {
 
-Order: {
-user: async (parent) => {
-const result = await pool.query(
-'SELECT * FROM users WHERE id = $1',
-[parent.user_id]
-);
+  // ========================================
+  // QUERY
+  // ========================================
 
-```
-  return result.rows[0];
-},
+  Query: {
 
-product: async (parent) => {
-  const result = await pool.query(
-    'SELECT * FROM products WHERE id = $1',
-    [parent.product_id]
-  );
+    // --------------------------------------
+    // USERS
+    // --------------------------------------
 
-  return result.rows[0];
-}
-```
+    users: async () => {
+      const result = await pool.query(
+        'SELECT * FROM users ORDER BY id'
+      );
 
-},
+      return result.rows;
+    },
 
-Mutation: {
-createProduct: async (_, { input }) => {
-const result = await pool.query(
-`INSERT INTO products
-        (name, price, stock, category_id, owner_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *`,
-[
-input.name,
-input.price,
-input.stock,
-input.categoryId,
-input.ownerId
-]
-);
+    // --------------------------------------
+    // CATEGORIES
+    // --------------------------------------
 
-```
-  return result.rows[0];
-},
+    categories: async () => {
+      const result = await pool.query(
+        'SELECT * FROM categories ORDER BY id'
+      );
 
-updateProduct: async (_, { id, input }) => {
-  const result = await pool.query(
-    `UPDATE products
-    SET
-      name = COALESCE($1, name),
-      price = COALESCE($2, price),
-      stock = COALESCE($3, stock)
-    WHERE id = $4
-    RETURNING *`,
-    [
-      input.name,
-      input.price,
-      input.stock,
-      id
-    ]
-  );
+      return result.rows;
+    },
 
-  return result.rows[0];
-},
+    // --------------------------------------
+    // PRODUCTS
+    // --------------------------------------
 
-deleteProduct: async (_, { id }) => {
-  const result = await pool.query(
-    'DELETE FROM products WHERE id = $1',
-    [id]
-  );
+    products: async (_, { categoryId }) => {
 
-  return result.rowCount > 0;
-}
-```
+      if (categoryId) {
+        const result = await pool.query(
+          `
+          SELECT *
+          FROM products
+          WHERE category_id = $1
+          ORDER BY id
+          `,
+          [categoryId]
+        );
 
-}
+        return result.rows;
+      }
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM products
+        ORDER BY id
+        `
+      );
+
+      return result.rows;
+    },
+
+    // --------------------------------------
+    // ORDERS
+    // --------------------------------------
+
+    orders: async () => {
+      const result = await pool.query(
+        'SELECT * FROM orders ORDER BY id'
+      );
+
+      return result.rows;
+    },
+
+    // --------------------------------------
+    // RESOLVER COUNTER
+    // --------------------------------------
+
+    resolverCallCount: async () => {
+
+      const result = await pool.query(
+        'SELECT COUNT(*) FROM categories'
+      );
+
+      const count = Number(result.rows[0].count);
+
+      console.log(
+        `Jumlah category yang diproses: ${count}`
+      );
+
+      return count;
+    },
+  },
+
+  // ========================================
+  // CATEGORY
+  // ========================================
+
+  Category: {
+
+    products: async (parent) => {
+
+      console.log(
+        `Category.products dipanggil untuk category_id=${parent.id}`
+      );
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM products
+        WHERE category_id = $1
+        ORDER BY id
+        `,
+        [parent.id]
+      );
+
+      return result.rows;
+    },
+  },
+
+  // ========================================
+  // PRODUCT
+  // ========================================
+
+  Product: {
+
+    owner: async (parent) => {
+
+      if (!parent.owner_id) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM users
+        WHERE id = $1
+        `,
+        [parent.owner_id]
+      );
+
+      return result.rows[0] || null;
+    },
+  },
+
+  // ========================================
+  // ORDER
+  // ========================================
+
+  Order: {
+
+    user: async (parent) => {
+
+      if (!parent.user_id) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM users
+        WHERE id = $1
+        `,
+        [parent.user_id]
+      );
+
+      return result.rows[0] || null;
+    },
+
+    product: async (parent) => {
+
+      if (!parent.product_id) {
+        return null;
+      }
+
+      const result = await pool.query(
+        `
+        SELECT *
+        FROM products
+        WHERE id = $1
+        `,
+        [parent.product_id]
+      );
+
+      return result.rows[0] || null;
+    },
+  },
+
+  // ========================================
+  // MUTATION
+  // ========================================
+
+  Mutation: {
+
+    // ======================================
+    // CREATE PRODUCT
+    // ======================================
+
+    createProduct: async (_, { input }) => {
+
+      const result = await pool.query(
+        `
+        INSERT INTO products
+          (name, price, stock, category_id, owner_id)
+        VALUES
+          ($1, $2, $3, $4, $5)
+        RETURNING *
+        `,
+        [
+          input.name,
+          input.price,
+          input.stock,
+          input.categoryId,
+          input.ownerId || null,
+        ]
+      );
+
+      return result.rows[0];
+    },
+
+    // ======================================
+    // UPDATE PRODUCT
+    // ======================================
+
+    updateProduct: async (_, { id, input }) => {
+
+      const result = await pool.query(
+        `
+        UPDATE products
+        SET
+          name = COALESCE($1, name),
+          price = COALESCE($2, price),
+          stock = COALESCE($3, stock)
+        WHERE id = $4
+        RETURNING *
+        `,
+        [
+          input.name ?? null,
+          input.price ?? null,
+          input.stock ?? null,
+          id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        throw new Error(
+          `Product dengan id ${id} tidak ditemukan`
+        );
+      }
+
+      return result.rows[0];
+    },
+
+    // ======================================
+    // DELETE PRODUCT
+    // ======================================
+
+    deleteProduct: async (_, { id }) => {
+
+      const result = await pool.query(
+        `
+        DELETE FROM products
+        WHERE id = $1
+        `,
+        [id]
+      );
+
+      return result.rowCount > 0;
+    },
+  },
 };
 
+// ==========================================
+// APOLLO SERVER
+// ==========================================
+
 const server = new ApolloServer({
-typeDefs,
-resolvers
+  typeDefs,
+  resolvers,
 });
+
+// ==========================================
+// NEXT.JS HANDLER
+// ==========================================
 
 const handler = startServerAndCreateNextHandler(server);
 
+// ==========================================
+// API HANDLER + CORS
+// ==========================================
+
 export default async function graphqlHandler(req, res) {
-res.setHeader(
-'Access-Control-Allow-Origin',
-'https://studio.apollographql.com'
-);
 
-res.setHeader(
-'Access-Control-Allow-Methods',
-'GET, POST, OPTIONS'
-);
+  res.setHeader(
+    'Access-Control-Allow-Origin',
+    '*'
+  );
 
-res.setHeader(
-'Access-Control-Allow-Headers',
-'Content-Type, Apollo-Require-Preflight'
-);
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET, POST, OPTIONS'
+  );
 
-if (req.method === 'OPTIONS') {
-return res.status(204).end();
-}
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Apollo-Require-Preflight'
+  );
 
-return handler(req, res);
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  return handler(req, res);
 }
