@@ -1,360 +1,258 @@
-```javascript
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
 
-// ==========================================
-// DATABASE
-// ==========================================
-
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+connectionString: process.env.DATABASE_URL,
+ssl: {
+rejectUnauthorized: false
+}
 });
-
-// ==========================================
-// GRAPHQL SCHEMA
-// ==========================================
 
 const typeDefs = `#graphql
 
-  type User {
-    id: ID!
-    name: String!
-    email: String!
-  }
+type User {
+id: ID!
+name: String!
+email: String!
+}
 
-  type Category {
-    id: ID!
-    name: String!
-    products: [Product]
-  }
+type Category {
+id: ID!
+name: String!
+products: [Product]
+}
 
-  type Product {
-    id: ID!
-    name: String!
-    price: Float!
-    stock: Int!
-    owner: User
-  }
+type Product {
+id: ID!
+name: String!
+price: Float!
+stock: Int!
+owner: User
+}
 
-  type Order {
-    id: ID!
-    quantity: Int!
-    total_price: Float!
-    user: User
-    product: Product
-  }
+type Order {
+id: ID!
+quantity: Int!
+total_price: Float!
+user: User
+product: Product
+}
 
-  # ========================================
-  # INPUT TYPE
-  # ========================================
+input CreateProductInput {
+name: String!
+price: Float!
+stock: Int!
+categoryId: ID!
+ownerId: ID!
+}
 
-  input CreateProductInput {
-    name: String!
-    price: Float!
-    stock: Int!
-    categoryId: ID!
-    ownerId: ID!
-  }
+input UpdateProductInput {
+name: String
+price: Float
+stock: Int
+}
 
-  input UpdateProductInput {
-    name: String
-    price: Float
-    stock: Int
-  }
+type Query {
+users: [User]
+categories: [Category]
+products(categoryId: ID): [Product]
+orders: [Order]
+resolverCallCount: Int!
+}
 
-  # ========================================
-  # QUERY
-  # ========================================
-
-  type Query {
-    users: [User]
-    categories: [Category]
-    products(categoryId: ID): [Product]
-    orders: [Order]
-
-    resolverCallCount: Int!
-  }
-
-  # ========================================
-  # MUTATION
-  # ========================================
-
-  type Mutation {
-    createProduct(input: CreateProductInput!): Product!
-    updateProduct(id: ID!, input: UpdateProductInput!): Product!
-    deleteProduct(id: ID!): Boolean!
-  }
+type Mutation {
+createProduct(input: CreateProductInput!): Product!
+updateProduct(id: ID!, input: UpdateProductInput!): Product!
+deleteProduct(id: ID!): Boolean!
+}
 `;
 
-// ==========================================
-// RESOLVERS
-// ==========================================
-
 const resolvers = {
+Query: {
+users: async () => {
+const result = await pool.query(
+'SELECT * FROM users'
+);
 
-  // ========================================
-  // ROOT QUERY
-  // ========================================
+```
+  return result.rows;
+},
 
-  Query: {
+categories: async () => {
+  const result = await pool.query(
+    'SELECT * FROM categories'
+  );
 
-    // Ambil semua user
-    users: async () => {
-      const result = await pool.query(
-        'SELECT * FROM users'
-      );
+  return result.rows;
+},
 
-      return result.rows;
-    },
+products: async (_, { categoryId }) => {
+  if (categoryId) {
+    const result = await pool.query(
+      'SELECT * FROM products WHERE category_id = $1',
+      [categoryId]
+    );
 
-    // Ambil semua category
-    categories: async () => {
-      const result = await pool.query(
-        'SELECT * FROM categories'
-      );
+    return result.rows;
+  }
 
-      return result.rows;
-    },
+  const result = await pool.query(
+    'SELECT * FROM products'
+  );
 
-    // Ambil semua product
-    products: async (_, { categoryId }) => {
+  return result.rows;
+},
 
-      if (categoryId) {
-        const result = await pool.query(
-          'SELECT * FROM products WHERE category_id = $1',
-          [categoryId]
-        );
+orders: async () => {
+  const result = await pool.query(
+    'SELECT * FROM orders'
+  );
 
-        return result.rows;
-      }
+  return result.rows;
+},
 
-      const result = await pool.query(
-        'SELECT * FROM products'
-      );
+resolverCallCount: async () => {
+  const result = await pool.query(
+    'SELECT COUNT(*) FROM categories'
+  );
 
-      return result.rows;
-    },
+  return Number(result.rows[0].count);
+}
+```
 
-    // Ambil semua order
-    orders: async () => {
-      const result = await pool.query(
-        'SELECT * FROM orders'
-      );
+},
 
-      return result.rows;
-    },
+Category: {
+products: async (parent) => {
+const result = await pool.query(
+'SELECT * FROM products WHERE category_id = $1',
+[parent.id]
+);
 
-    // ======================================
-    // COUNTER
-    // ======================================
+```
+  return result.rows;
+}
+```
 
-    resolverCallCount: async () => {
+},
 
-      const result = await pool.query(
-        'SELECT COUNT(*) FROM categories'
-      );
+Product: {
+owner: async (parent) => {
+const result = await pool.query(
+'SELECT * FROM users WHERE id = $1',
+[parent.owner_id]
+);
 
-      const count = Number(result.rows[0].count);
+```
+  return result.rows[0];
+}
+```
 
-      console.log(
-        `Jumlah category yang diproses: ${count}`
-      );
+},
 
-      return count;
-    }
-  },
+Order: {
+user: async (parent) => {
+const result = await pool.query(
+'SELECT * FROM users WHERE id = $1',
+[parent.user_id]
+);
 
-  // ========================================
-  // CATEGORY RESOLVER
-  // ========================================
+```
+  return result.rows[0];
+},
 
-  Category: {
+product: async (parent) => {
+  const result = await pool.query(
+    'SELECT * FROM products WHERE id = $1',
+    [parent.product_id]
+  );
 
-    products: async (parent) => {
+  return result.rows[0];
+}
+```
 
-      console.log(
-        `Category.products dipanggil untuk category_id=${parent.id}`
-      );
+},
 
-      const result = await pool.query(
-        'SELECT * FROM products WHERE category_id = $1',
-        [parent.id]
-      );
-
-      return result.rows;
-    }
-  },
-
-  // ========================================
-  // PRODUCT RESOLVER
-  // ========================================
-
-  Product: {
-
-    owner: async (parent) => {
-
-      const result = await pool.query(
-        'SELECT * FROM users WHERE id = $1',
-        [parent.owner_id]
-      );
-
-      return result.rows[0];
-    }
-  },
-
-  // ========================================
-  // ORDER RESOLVER
-  // ========================================
-
-  Order: {
-
-    user: async (parent) => {
-
-      const result = await pool.query(
-        'SELECT * FROM users WHERE id = $1',
-        [parent.user_id]
-      );
-
-      return result.rows[0];
-    },
-
-    product: async (parent) => {
-
-      const result = await pool.query(
-        'SELECT * FROM products WHERE id = $1',
-        [parent.product_id]
-      );
-
-      return result.rows[0];
-    }
-  },
-
-  // ========================================
-  // MUTATION
-  // ========================================
-
-  Mutation: {
-
-    // ======================================
-    // CREATE PRODUCT
-    // ======================================
-
-    createProduct: async (_, { input }) => {
-
-      const result = await pool.query(
-        `INSERT INTO products
+Mutation: {
+createProduct: async (_, { input }) => {
+const result = await pool.query(
+`INSERT INTO products
         (name, price, stock, category_id, owner_id)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING *`,
-        [
-          input.name,
-          input.price,
-          input.stock,
-          input.categoryId,
-          input.ownerId
-        ]
-      );
+[
+input.name,
+input.price,
+input.stock,
+input.categoryId,
+input.ownerId
+]
+);
 
-      return result.rows[0];
-    },
+```
+  return result.rows[0];
+},
 
-    // ======================================
-    // UPDATE PRODUCT
-    // ======================================
+updateProduct: async (_, { id, input }) => {
+  const result = await pool.query(
+    `UPDATE products
+    SET
+      name = COALESCE($1, name),
+      price = COALESCE($2, price),
+      stock = COALESCE($3, stock)
+    WHERE id = $4
+    RETURNING *`,
+    [
+      input.name,
+      input.price,
+      input.stock,
+      id
+    ]
+  );
 
-    updateProduct: async (_, { id, input }) => {
+  return result.rows[0];
+},
 
-      const result = await pool.query(
-        `UPDATE products
-        SET
-          name = COALESCE($1, name),
-          price = COALESCE($2, price),
-          stock = COALESCE($3, stock)
-        WHERE id = $4
-        RETURNING *`,
-        [
-          input.name,
-          input.price,
-          input.stock,
-          id
-        ]
-      );
+deleteProduct: async (_, { id }) => {
+  const result = await pool.query(
+    'DELETE FROM products WHERE id = $1',
+    [id]
+  );
 
-      return result.rows[0];
-    },
+  return result.rowCount > 0;
+}
+```
 
-    // ======================================
-    // DELETE PRODUCT
-    // ======================================
-
-    deleteProduct: async (_, { id }) => {
-
-      const result = await pool.query(
-        'DELETE FROM products WHERE id = $1',
-        [id]
-      );
-
-      return result.rowCount > 0;
-    }
-  }
+}
 };
 
-// ==========================================
-// APOLLO SERVER
-// ==========================================
-
 const server = new ApolloServer({
-  typeDefs,
-  resolvers
+typeDefs,
+resolvers
 });
-
-// ==========================================
-// NEXT.JS HANDLER
-// ==========================================
 
 const handler = startServerAndCreateNextHandler(server);
 
-// ==========================================
-// API HANDLER + CORS
-// ==========================================
-
 export default async function graphqlHandler(req, res) {
+res.setHeader(
+'Access-Control-Allow-Origin',
+'https://studio.apollographql.com'
+);
 
-  // ----------------------------------------
-  // CORS
-  // ----------------------------------------
+res.setHeader(
+'Access-Control-Allow-Methods',
+'GET, POST, OPTIONS'
+);
 
-  res.setHeader(
-    'Access-Control-Allow-Origin',
-    'https://studio.apollographql.com'
-  );
+res.setHeader(
+'Access-Control-Allow-Headers',
+'Content-Type, Apollo-Require-Preflight'
+);
 
-  res.setHeader(
-    'Access-Control-Allow-Methods',
-    'GET, POST, OPTIONS'
-  );
-
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'Content-Type, Apollo-Require-Preflight'
-  );
-
-  // ----------------------------------------
-  // OPTIONS / PREFLIGHT
-  // ----------------------------------------
-
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-
-  // ----------------------------------------
-  // GRAPHQL
-  // ----------------------------------------
-
-  return handler(req, res);
+if (req.method === 'OPTIONS') {
+return res.status(204).end();
 }
-```
+
+return handler(req, res);
+}
