@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
 
-// Ambil user dari header "Authorization: Bearer <jwt>"
 export function getUser(req) {
   const authHeader = req.headers.authorization || '';
   const token = authHeader.replace('Bearer ', '');
