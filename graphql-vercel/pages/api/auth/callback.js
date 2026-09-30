@@ -16,7 +16,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'state tidak valid' });
     }
 
-    // Tukar code -> access token (di server, karena butuh client_secret)
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
@@ -36,7 +35,6 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: error || 'gagal menukar code' });
     }
 
-    // Ambil profil GitHub
     const userRes = await fetch('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${access_token}`,
@@ -45,10 +43,9 @@ export default async function handler(req, res) {
     });
     const githubUser = await userRes.json();
 
-    // Terbitkan JWT sendiri
     const token = signToken(githubUser.login);
 
-    res.status(200).json({ token }); // salin token ini ke Apollo Sandbox
+    res.status(200).json({ token });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'OAuth gagal' });
