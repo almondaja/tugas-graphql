@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 
 export default function handler(req, res) {
-  // state disimpan di cookie (Vercel serverless = stateless, jadi nggak bisa pakai memori)
   const state = crypto.randomBytes(16).toString('hex');
   res.setHeader(
     'Set-Cookie',
