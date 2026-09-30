@@ -1,6 +1,7 @@
 import { ApolloServer } from '@apollo/server';
 import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { Pool } from 'pg';
+import { getUser } from '../../lib/auth';
 
 // ==========================================
 // DATABASE
@@ -292,7 +293,11 @@ const resolvers = {
     // CREATE PRODUCT
     // ======================================
 
-    createProduct: async (_, { input }) => {
+    createProduct: async (_, { input }, context) => {
+
+      if (!context.user) {
+        throw new Error('Unauthorized: silakan login terlebih dahulu');
+      }
 
       const result = await pool.query(
         `
@@ -379,7 +384,9 @@ const server = new ApolloServer({
 // NEXT.JS HANDLER
 // ==========================================
 
-const handler = startServerAndCreateNextHandler(server);
+const handler = startServerAndCreateNextHandler(server, {
+  context: async (req) => ({ user: getUser(req) }),
+});
 
 // ==========================================
 // API HANDLER + CORS
@@ -399,7 +406,7 @@ export default async function graphqlHandler(req, res) {
 
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type, Apollo-Require-Preflight'
+    'Content-Type, Authorization, Apollo-Require-Preflight'
   );
 
   if (req.method === 'OPTIONS') {
